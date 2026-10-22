@@ -1,0 +1,35 @@
+# GoBeyond – Python dependencies
+# Install with: pip install -r requirements.txt
+
+# Core LangGraph / LangChain
+langgraph>=1.2.0
+langgraph-checkpoint-postgres>=3.0.0
+langchain>=1.3.0
+langchain-core>=1.4.0
+langchain-groq>=1.1.0
+langchain-community>=0.4.0
+langchain-mcp-adapters>=0.2.0
+
+# LLM providers
+groq>=0.37.0
+
+# Search & tools
+tavily-python>=0.7.0
+langchain-tavily>=0.2.0
+
+# MCP (Model Context Protocol)
+mcp>=1.27.0
+
+# Database – Supabase / PostgreSQL
+psycopg[binary]>=3.3.0
+psycopg-pool>=3.3.0
+
+# HTTP & utilities
+requests>=2.34.0
+python-dotenv>=1.2.0
+
+# Web UI
+streamlit>=1.45.0
+
+# Async
+anyio>=4.13.0
