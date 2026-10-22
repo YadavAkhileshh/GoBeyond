@@ -9,7 +9,98 @@ A multi-agent travel planning system built with LangGraph. You describe a trip, 
 
 ---
 
-## How it works
+## Architecture
+
+This diagram shows every component in the system and how they connect — from the browser all the way through to the external APIs.
+
+```mermaid
+graph TB
+    subgraph Browser["Browser"]
+        UI[Streamlit Frontend]
+    end
+
+    subgraph Core["LangGraph Graph — graph.py"]
+        SUP[Supervisor Agent]
+        FA[Flight Agent]
+        HA[Hotel Agent]
+        WA[Weather Agent]
+        BA[Budget Agent]
+        IA[Itinerary Agent]
+        HITL[Human Review\ninterrupt]
+        FIN[Final Agent]
+
+        SUP --> FA --> HA --> WA --> BA --> IA --> HITL --> FIN
+    end
+
+    subgraph MCP["MCP Client — mcp_client.py"]
+        MC[MultiServerMCPClient]
+    end
+
+    subgraph Servers["MCP Servers"]
+        T["Tavily\nHTTP transport\nmcp.tavily.com"]
+        AV["AviationStack\nstdio transport\naviationstack-mcp subprocess"]
+        OW["OpenWeatherMap\nstdio transport\nmcp_weather_server.py subprocess"]
+    end
+
+    subgraph APIs["External APIs"]
+        TA[Tavily Search API]
+        AVA[AviationStack API]
+        OWA[OpenWeatherMap API]
+    end
+
+    subgraph Memory["Memory"]
+        DB[(Supabase PostgreSQL\nLangGraph Checkpointer)]
+    end
+
+    subgraph LLM["LLM"]
+        GROQ[Groq\nLLaMA 3.3 70B]
+    end
+
+    UI -->|user query| Core
+    Core -->|checkpoint read/write| DB
+    Core -->|LLM calls| GROQ
+    FA -->|list_airports, list_airlines| MC
+    HA -->|tavily_search| MC
+    WA -->|get_current_weather, get_forecast| MC
+    MC --> T & AV & OW
+    T -->|HTTPS| TA
+    AV -->|subprocess + AVIATION_STACK_API_KEY| AVA
+    OW -->|subprocess + OPENWEATHER_API_KEY| OWA
+    HITL -->|interrupt| UI
+    UI -->|resume with approval| HITL
+    FIN -->|final plan| UI
+```
+
+---
+
+## How MCP communication works
+
+The app never calls external APIs directly. Instead, [mcp_client.py](mcp_client.py) creates a `MultiServerMCPClient` that manages three MCP server connections:
+
+| Server | Transport | What it does |
+|--------|-----------|-------------|
+| **Tavily** | Streamable HTTP | Sends search queries to `mcp.tavily.com` over HTTPS |
+| **AviationStack** | stdio | Spawns `aviationstack-mcp` as a subprocess, communicates via stdin/stdout |
+| **OpenWeatherMap** | stdio | Spawns `mcp_weather_server.py` as a subprocess, communicates via stdin/stdout |
+
+When a user submits a query, here is the exact sequence:
+
+1. Streamlit calls `app.invoke()` on the LangGraph graph
+2. The graph saves a checkpoint to Supabase PostgreSQL before each node runs
+3. The supervisor sends the query to Groq (LLaMA 3.3 70B) to decide which agents run
+4. Flight agent calls `list_airports()` and `list_airlines()` — these go through `mcp_client.py` → AviationStack subprocess → AviationStack REST API
+5. Hotel agent calls `tavily_search()` — goes through `mcp_client.py` → Tavily HTTP MCP → Tavily Search API
+6. Weather agent calls `current_weather()` and `forecast()` — goes through `mcp_client.py` → weather subprocess → OpenWeatherMap REST API
+7. Budget and Itinerary agents use Groq only — no external API calls
+8. The graph hits an `interrupt` at the human review node and returns control to Streamlit
+9. You approve or request changes in the UI
+10. Streamlit calls `app.invoke(Command(resume=...))` to continue the graph
+11. Final agent writes the finished plan using Groq
+12. The complete plan is shown in the UI and saved as a Markdown file
+
+---
+
+
 
 ```mermaid
 flowchart TD
